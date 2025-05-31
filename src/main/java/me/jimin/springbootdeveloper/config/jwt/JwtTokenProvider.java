@@ -1,15 +1,26 @@
 package me.jimin.springbootdeveloper.config.jwt;
 
-import io.jsonwebtoken.*;
+import io.jsonwebtoken.Jwts;
+import io.jsonwebtoken.SignatureAlgorithm;
+import io.jsonwebtoken.io.Decoders;
+import io.jsonwebtoken.security.Keys;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.security.oauth2.jwt.JwtException;
 import org.springframework.stereotype.Component;
 
+import javax.crypto.SecretKey;
 import java.util.Date;
 
 @Component
 public class JwtTokenProvider {
 
-    private final String SECRET_KEY = "your_secret_key";
-    private final long EXPIRATION = 1000 * 60 * 60; // 1시간
+    private final SecretKey key;
+    private final long EXPIRATION = 1000 * 60 * 60;
+
+    public JwtTokenProvider(@Value("${jwt.secret}") String base64Secret) {
+        byte[] keyBytes = Decoders.BASE64.decode(base64Secret);
+        this.key = Keys.hmacShaKeyFor(keyBytes);
+    }
 
     public String createToken(String email, String role) {
         return Jwts.builder()
@@ -17,13 +28,15 @@ public class JwtTokenProvider {
                 .claim("role", role)
                 .setIssuedAt(new Date())
                 .setExpiration(new Date(System.currentTimeMillis() + EXPIRATION))
-                .signWith(SignatureAlgorithm.HS512, SECRET_KEY)
+                .signWith(key, SignatureAlgorithm.HS512)
                 .compact();
     }
 
+
     public String getEmail(String token) {
-        return Jwts.parser()
-                .setSigningKey(SECRET_KEY)
+        return Jwts.parserBuilder()
+                .setSigningKey(key)       // SecretKey 타입
+                .build()
                 .parseClaimsJws(token)
                 .getBody()
                 .getSubject();
@@ -31,9 +44,12 @@ public class JwtTokenProvider {
 
     public boolean validate(String token) {
         try {
-            Jwts.parser().setSigningKey(SECRET_KEY).parseClaimsJws(token);
+            Jwts.parserBuilder()
+                    .setSigningKey(key)       // SecretKey 타입
+                    .build()
+                    .parseClaimsJws(token);
             return true;
-        } catch (Exception e) {
+        } catch (JwtException | IllegalArgumentException e) {
             return false;
         }
     }

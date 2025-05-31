@@ -1,5 +1,7 @@
 package me.jimin.springbootdeveloper.controller;
 
+import jakarta.servlet.http.HttpServletResponse;
+import jakarta.servlet.http.HttpSession;
 import lombok.RequiredArgsConstructor;
 import me.jimin.springbootdeveloper.config.jwt.JwtTokenProvider;
 import me.jimin.springbootdeveloper.domain.User;
@@ -13,6 +15,7 @@ import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.oauth2.core.user.OAuth2User;
 import org.springframework.web.bind.annotation.*;
 
+import java.io.IOException;
 import java.util.Map;
 
 @RestController
@@ -37,15 +40,29 @@ public class AuthController {
     }
 
     @GetMapping("/oauth/success")
-    public ResponseEntity<?> oauthLoginSuccess(@AuthenticationPrincipal OAuth2User oAuth2User) {
+    public void oauthLoginSuccess(@AuthenticationPrincipal OAuth2User oAuth2User,
+                                  HttpServletResponse response) throws IOException {
         Map<String, Object> attributes = oAuth2User.getAttributes();
-        Map<String, Object> response = (Map<String, Object>) attributes.get("response");
-        String email = (String) response.get("email");
+        String email;
+
+        // ✅ 네이버 로그인인 경우: 응답이 중첩됨
+        if (attributes.containsKey("response")) {
+            Map<String, Object> responseMap = (Map<String, Object>) attributes.get("response");
+            email = (String) responseMap.get("email");
+        } else {
+            // ✅ 구글 로그인인 경우: 바로 email 존재
+            email = (String) attributes.get("email");
+        }
 
         User user = userRepository.findByEmail(email)
                 .orElseThrow(() -> new RuntimeException("사용자 없음"));
 
         String token = jwtTokenProvider.createToken(user.getEmail(), user.getRole());
-        return ResponseEntity.ok(new LoginResponse(token));
+
+        // Flutter 앱으로 리디렉션
+        String redirectUrl = "http://localhost:3000/#/login-redirect?token=" + token;
+        response.sendRedirect(redirectUrl);
     }
+
+
 }

@@ -32,6 +32,7 @@ public class CustomOAuth2UserService extends DefaultOAuth2UserService {
             name = oauth2User.getAttribute("name");
         } else if ("naver".equals(provider)) {
             Map<String, Object> response = oauth2User.getAttribute("response");
+            assert response != null;
             email = (String) response.get("email");
             name = (String) response.get("name");
         } else {
