@@ -1,4 +1,4 @@
-package me.jimin.springbootdeveloper.config;
+package me.jimin.springbootdeveloper.config.jwt;
 
 import org.springframework.context.annotation.Configuration;
 import org.springframework.web.servlet.config.annotation.CorsRegistry;
