@@ -5,6 +5,7 @@ import org.springframework.data.annotation.Id;
 import org.springframework.data.mongodb.core.mapping.Document;
 
 import java.time.LocalDateTime;
+import java.util.List;
 
 /**
  * MongoDB GridFS에 저장된 파일 메타데이터(일부, 필요 시 추가 필드 사용 가능)
@@ -28,4 +29,5 @@ public class UploadedFile {
     private LocalDateTime uploadDate;   // 업로드 시각
 
     private String uploaderUserId;      // 업로더 ID (metadata.customField 등으로도 저장 가능)
+    private List<String> sentences;
 }

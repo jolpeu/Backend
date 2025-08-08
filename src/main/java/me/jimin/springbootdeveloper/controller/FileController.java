@@ -5,6 +5,7 @@ import me.jimin.springbootdeveloper.dto.FileInfo;
 import me.jimin.springbootdeveloper.service.FileService;
 import org.springframework.core.io.InputStreamResource;
 import org.springframework.http.*;
+import org.springframework.security.core.Authentication;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
@@ -37,15 +38,15 @@ public class FileController {
      *     └─ userId : anonymous  (세션/토큰 로그인 연동 전에는 기본값)
      *
      * @param file   MultipartFile (클라이언트에서 보낸 파일)
-     * @param userId 업로더 사용자 ID (없으면 "anonymous")
      * @return 업로드된 파일 ID와 파일명을 담은 JSON 혹은 오류 메시지
      */
-    @PostMapping("/upload")
+    @PostMapping("/analyze-pdf")
     public ResponseEntity<?> uploadFile(
             @RequestParam("file") MultipartFile file,
-            @AuthenticationPrincipal String userId  // JWT 토큰의 subject(userId)가 자동으로 들어옵니다.
+            Authentication authentication
     ) {
         try {
+            String userId = authentication.getName();
             String fileId = fileService.uploadFile(file, userId);
             Map<String, String> response = new HashMap<>();
             response.put("id", fileId);
@@ -63,13 +64,13 @@ public class FileController {
      * 예시 요청:
      *   GET http://localhost:8080/api/files/list?userId=anonymous
      *
-     * @param userId 업로더 사용자 ID (없으면 "anonymous")
      * @return 업로더가 업로드한 파일 목록(List<FileInfo>)을 JSON으로 반환
      */
     @GetMapping("/list")
     public ResponseEntity<List<FileInfo>> listFiles(
-            @AuthenticationPrincipal String userId
+            Authentication authentication
     ) {
+        String userId = authentication.getName();
         // JwtAuthenticationFilter가 subject(토큰의 sub)로 userId를 세팅해두었으므로,
         // userId 변수에는 토큰에 담긴 실제 사용자 ID가 담겨 있다.
         List<FileInfo> files = fileService.listFiles(userId);

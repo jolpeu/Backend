@@ -28,28 +28,37 @@ public class SecurityConfig {
         JwtAuthenticationFilter jwtFilter = new JwtAuthenticationFilter(jwtTokenProvider);
 
         http
+                // 익명 인증 끄기 (JWT 없으면 401)
+                .anonymous(AbstractHttpConfigurer::disable)
                 .csrf(AbstractHttpConfigurer::disable)
                 .formLogin(AbstractHttpConfigurer::disable)
                 .httpBasic(AbstractHttpConfigurer::disable)
+
+                // 인증 설정
                 .authorizeHttpRequests(auth -> auth
+                        // 로그인/회원가입(OAuth 포함)만 완전 허용
                         .requestMatchers("/auth/**").permitAll()
-                        .anyRequest().authenticated()
+                        // 그 외 모든 /api/** 요청은 인증 필요
+                        .requestMatchers("/api/**").authenticated()
+                        .anyRequest().permitAll()  // (필요한 다른 경로만 허용)
                 )
+
+                // OAuth2 로그인 설정 (이미 잘 돼 있음)
                 .oauth2Login(oauth2 -> oauth2
                         .userInfoEndpoint(userInfo -> userInfo
                                 .userService(customOAuth2UserService)
                         )
-                        .defaultSuccessUrl("/auth/oauth/success", true) // 로그인 성공 후 리디렉션
+                        .defaultSuccessUrl("/auth/oauth/success", true)
                 )
+
+                // JWT 필터 등록
                 .addFilterBefore(jwtFilter, UsernamePasswordAuthenticationFilter.class);
 
         return http.build();
     }
-
 
     @Bean
     public AuthenticationManager authManager(AuthenticationConfiguration config) throws Exception {
         return config.getAuthenticationManager();
     }
 }
-

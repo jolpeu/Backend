@@ -12,6 +12,7 @@ import me.jimin.springbootdeveloper.repository.UserRepository;
 import me.jimin.springbootdeveloper.service.UserService;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.security.oauth2.core.user.OAuth2User;
 import org.springframework.web.bind.annotation.*;
 
@@ -64,5 +65,16 @@ public class AuthController {
         response.sendRedirect(redirectUrl);
     }
 
+    @GetMapping("/user/me")
+    public ResponseEntity<?> getCurrentUser(@AuthenticationPrincipal UserDetails userDetails) {
+        String email = userDetails.getUsername();
+        User user = userRepository.findByEmail(email)
+                .orElseThrow(() -> new RuntimeException("사용자 없음"));
+
+        return ResponseEntity.ok(Map.of(
+                "email", user.getEmail(),
+                "name", user.getName()
+        ));
+    }
 
 }
