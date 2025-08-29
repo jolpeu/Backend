@@ -1,190 +1,79 @@
 package me.jimin.springbootdeveloper.service;
 
-import com.mongodb.BasicDBObject;
-import com.mongodb.DBObject;
 import lombok.RequiredArgsConstructor;
-import me.jimin.springbootdeveloper.dto.FileInfo;
-import org.bson.types.ObjectId;
-import org.springframework.core.ParameterizedTypeReference;
+import me.jimin.springbootdeveloper.domain.AnalysisResult;
+import me.jimin.springbootdeveloper.domain.PdfAnalysis;
+import me.jimin.springbootdeveloper.repository.PdfAnalysisRepository;
 import org.springframework.core.io.FileSystemResource;
-import org.springframework.data.mongodb.core.query.Criteria;
-import org.springframework.data.mongodb.core.query.Query;
-import org.springframework.data.mongodb.gridfs.GridFsOperations;
-import org.springframework.data.mongodb.gridfs.GridFsTemplate;
-import org.springframework.http.HttpEntity;
-import org.springframework.http.HttpMethod;
-import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
 import org.springframework.util.LinkedMultiValueMap;
-import org.springframework.web.multipart.MultipartFile;
-import com.mongodb.client.gridfs.model.GridFSFile;
 import org.springframework.web.client.RestTemplate;
+import org.springframework.web.multipart.MultipartFile;
 
 import java.io.File;
-import java.io.FileInputStream;
 import java.io.IOException;
-import java.io.InputStream;
-import java.util.*;
+import java.time.LocalDateTime;
+import java.util.List;
+import java.util.Map;
 import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
 public class FileService {
 
-    private final GridFsTemplate gridFsTemplate;
-    private final GridFsOperations gridFsOperations;
+    private final PdfAnalysisRepository pdfAnalysisRepository;
     private final RestTemplate restTemplate = new RestTemplate();
 
-    // FastAPI 업로드 엔드포인트
     private static final String FASTAPI_URL = "http://127.0.0.1:8000/upload_pdf/";
 
     /**
-     * 1) MultipartFile을 GridFS에 저장하면서
-     *    FastAPI에 PDF 보내 추출된 문장 리스트를 metadata에 함께 심음
+     * PDF 파일을 FastAPI로 보내 분석하고, 그 결과를 MongoDB 컬렉션에 저장
      */
-    public String uploadFile(MultipartFile multipartFile, String uploaderUserId) throws IOException {
-        // 1) MultipartFile → 임시 파일
+    public PdfAnalysis analyzeAndSavePdf(MultipartFile multipartFile, String userId) throws IOException {
+        // 1. MultipartFile을 임시 파일로 변환 (기존 로직과 동일)
         File tmp = File.createTempFile("upload-", ".pdf");
         multipartFile.transferTo(tmp);
 
-        // 2) FastAPI 호출: multipart/form-data 로 PDF 전송
+        // 2. FastAPI 호출: multipart/form-data로 PDF 전송 (기존 로직과 동일)
         var body = new LinkedMultiValueMap<String, Object>();
         body.add("file", new FileSystemResource(tmp));
 
+        // FastAPI 응답을 Map으로 받음
         @SuppressWarnings("unchecked")
-        Map<String, Object> fastApiResp = restTemplate.postForObject(
-                FASTAPI_URL,        // "http://127.0.0.1:8000/upload_pdf/"
-                body,
-                Map.class
-        );
+        Map<String, Object> fastApiResp = restTemplate.postForObject(FASTAPI_URL, body, Map.class);
+
+        tmp.delete(); // 임시 파일 즉시 삭제
 
         if (fastApiResp == null || !fastApiResp.containsKey("results")) {
-            tmp.delete();
-            throw new RuntimeException("FastAPI 응답에 results 키가 없습니다.");
+            throw new RuntimeException("FastAPI 응답에 'results' 키가 없습니다.");
         }
 
-        // 3) results 배열에서 sentence들만 추출
+        // 3. FastAPI 응답(List<Map>)을 List<AnalysisResult>로 변환
         @SuppressWarnings("unchecked")
-        List<Map<String, Object>> rawResults =
-                (List<Map<String, Object>>) fastApiResp.get("results");
-        List<String> sentences = rawResults.stream()
-                .map(m -> m.get("sentence").toString())
+        List<Map<String, Object>> rawResults = (List<Map<String, Object>>) fastApiResp.get("results");
+
+        List<AnalysisResult> results = rawResults.stream()
+                .map(item -> AnalysisResult.builder()
+                        .sentence((String) item.get("sentence"))
+                        // FastAPI가 아래 데이터도 반환한다고 가정합니다.
+                        .emotion((String) item.getOrDefault("emotion", "neutral"))
+                        .effectFile((String) item.getOrDefault("effect_file", ""))
+                        .ttsFile((String) item.getOrDefault("tts_file", ""))
+                        .build())
                 .collect(Collectors.toList());
 
-        // 4) GridFS metadata 에 심기
-        DBObject metadata = new BasicDBObject();
-        metadata.put("uploaderUserId", uploaderUserId);
-        metadata.put("contentType", multipartFile.getContentType());
-        metadata.put("sentences", sentences);
+        // 4. 최종 PdfAnalysis 객체 생성
+        PdfAnalysis analysis = PdfAnalysis.builder()
+                .userId(userId)
+                .filename(multipartFile.getOriginalFilename())
+                .uploadedTime(LocalDateTime.now())
+                .results(results)
+                .build();
 
-        // 5) GridFS에 저장 (InputStream으로 읽고 난 뒤에 tmp 파일 삭제)
-        ObjectId fileId = gridFsTemplate.store(
-                new FileInputStream(tmp),
-                multipartFile.getOriginalFilename(),
-                multipartFile.getContentType(),
-                metadata
-        );
-        tmp.delete();
-
-        return fileId.toHexString();
-    }
-//    public String uploadFile(MultipartFile multipartFile, String uploaderUserId) throws IOException {
-//        // 1. MultipartFile → 임시 파일
-//        File tmp = File.createTempFile("upload-", ".pdf");
-//        multipartFile.transferTo(tmp);
-//
-//        // 2. FastAPI 호출: multipart/form-data 로 PDF 전송
-//        var body = new org.springframework.util.LinkedMultiValueMap<String, Object>();
-//        body.add("file", new FileSystemResource(tmp));
-//        @SuppressWarnings("unchecked")
-//        Map<String, Object> fastApiResp = restTemplate.postForObject(FASTAPI_URL, body, Map.class);
-//
-//
-//        if (fastApiResp == null || !fastApiResp.containsKey("results")) {
-//            throw new RuntimeException("FastAPI 응답이 유효하지 않습니다.");
-//        }
-//
-//        // 3. 응답에서 문장 리스트 추출
-//        @SuppressWarnings("unchecked")
-//        List<String> sentences = restTemplate.postForObject(
-//                FASTAPI_URL, body, List.class);
-//
-//        if (sentences == null) {
-//            throw new RuntimeException("FastAPI에서 문장 리스트를 받지 못했습니다.");
-//        }
-//
-//// 바로 sentences 변수 사용
-//        DBObject metadata = new BasicDBObject();
-//        metadata.put("uploaderUserId", uploaderUserId);
-//        metadata.put("contentType", multipartFile.getContentType());
-//        metadata.put("sentences", sentences);
-//
-//
-//        // 5. GridFS에 저장
-//        ObjectId fileId = gridFsTemplate.store(
-//                multipartFile.getInputStream(),
-//                multipartFile.getOriginalFilename(),
-//                multipartFile.getContentType(),
-//                metadata
-//        );
-//
-//        tmp.delete();
-//
-//        return fileId.toHexString();
-//    }
-
-    /**
-     * 2) uploaderUserId에 해당하는 파일 목록 조회
-     *    metadata.uploaderUserId 로 필터, metadata.sentences 도 함께 읽어 DTO로 변환
-     */
-    public List<FileInfo> listFiles(String uploaderUserId) {
-        // metadata.uploaderUserId == uploaderUserId
-        Query query = Query.query(Criteria.where("metadata.uploaderUserId").is(uploaderUserId));
-        List<GridFSFile> fsFiles = new ArrayList<>();
-        gridFsTemplate.find(query).into(fsFiles);
-
-        List<FileInfo> result = new ArrayList<>();
-        for (GridFSFile fsFile : fsFiles) {
-            FileInfo info = new FileInfo();
-            info.setId(fsFile.getObjectId().toHexString());
-            info.setFilename(fsFile.getFilename());
-            // contentType
-            if (fsFile.getMetadata() != null && fsFile.getMetadata().containsKey("contentType")) {
-                info.setContentType(fsFile.getMetadata().getString("contentType"));
-            } else {
-                info.setContentType("application/octet-stream");
-            }
-            info.setLength(fsFile.getLength());
-            info.setUploadDate(fsFile.getUploadDate().toInstant().toString());
-            // uploaderUserId
-            if (fsFile.getMetadata() != null && fsFile.getMetadata().containsKey("uploaderUserId")) {
-                info.setUploaderUserId(fsFile.getMetadata().getString("uploaderUserId"));
-            } else {
-                info.setUploaderUserId("unknown");
-            }
-            // sentences
-            if (fsFile.getMetadata() != null && fsFile.getMetadata().containsKey("sentences")) {
-                @SuppressWarnings("unchecked")
-                List<String> sentences = (List<String>) fsFile.getMetadata().get("sentences");
-                info.setSentences(sentences);
-            } else {
-                info.setSentences(Collections.emptyList());
-            }
-            result.add(info);
-        }
-
-        return result;
+        return pdfAnalysisRepository.save(analysis);
     }
 
-    /**
-     * 3) 파일 다운로드용 InputStream 반환
-     */
-    public Optional<InputStream> getFileAsStream(String fileIdHex) throws IOException {
-        ObjectId objectId = new ObjectId(fileIdHex);
-        GridFSFile fsFile = gridFsTemplate.findOne(Query.query(Criteria.where("_id").is(objectId)));
-        if (fsFile == null) {
-            return Optional.empty();
-        }
-        return Optional.of(gridFsOperations.getResource(fsFile).getInputStream());
+    public List<PdfAnalysis> listAnalysesByUserId(String userId) {
+        return pdfAnalysisRepository.findByUserId(userId);
     }
 }
