@@ -12,6 +12,7 @@ public class ReadingProgressResponse {
     private final String bookId;
     private final double offset;
     private final double ratio;
+    private final Integer currentIndex;
     private final LocalDateTime updatedAt;
 
     // Entity 객체를 DTO로 변환하는 생성자
@@ -20,6 +21,7 @@ public class ReadingProgressResponse {
         this.bookId = progress.getBookId();
         this.offset = progress.getOffset();
         this.ratio = progress.getRatio();
+        this.currentIndex = progress.getCurrentIndex();
         this.updatedAt = progress.getUpdatedAt();
     }
 }

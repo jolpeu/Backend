@@ -11,4 +11,5 @@ public class UpsertProgressRequest {
     private String bookId;
     private double offset;
     private double ratio;
+    private Integer currentIndex;
 }

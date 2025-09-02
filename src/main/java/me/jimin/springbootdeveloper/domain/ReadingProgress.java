@@ -25,6 +25,7 @@ public class ReadingProgress {
 
     private double offset; // 스크롤 위치
     private double ratio;  // 진행률 (0.0 ~ 1.0)
+    private Integer currentIndex;
 
     private LocalDateTime updatedAt; // 마지막 업데이트 시간
 }

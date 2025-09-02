@@ -32,6 +32,7 @@ public class ReadingProgressService {
         progress.setBookId(request.getBookId());
         progress.setOffset(request.getOffset());
         progress.setRatio(request.getRatio());
+        progress.setCurrentIndex(request.getCurrentIndex());
         progress.setUpdatedAt(LocalDateTime.now());
 
         // JpaRepository의 save는 id가 있으면 update, 없으면 insert를 실행
